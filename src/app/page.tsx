@@ -55,7 +55,7 @@ export default function Dashboard() {
     
     // Parallel fetch from both independent tables
     const [collectionsRes, expensesRes] = await Promise.all([
-      supabase.from('collections').select('*'),
+      supabase.from('collection').select('*'),
       supabase.from('expense').select('*')
     ]);
 
