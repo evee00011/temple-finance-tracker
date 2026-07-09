@@ -235,13 +235,13 @@ export default function Dashboard() {
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder={trxType === 'contribution' ? "e.g., Rajesh Kumar" : "e.g., Altar Flowers"}
+                placeholder={trxType === 'contribution' ? "Enter contributor name" : "Enter expense name"}
                 className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 focus:outline-none"
               />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block text-sm">
-                <span className="mb-1 block text-slate-300">Amount ($)</span>
+                <span className="mb-1 block text-slate-300">Amount (RM)</span>
                 <input
                   type="number"
                   step="0.01"
@@ -273,7 +273,7 @@ export default function Dashboard() {
                   <>
                     <option value="Food">Food</option>
                     <option value="Transport">Transport</option>
-                    <option value="Rent">Rent</option>
+                    <option value="Equipment">Equipment</option>
                     <option value="Utilities">Utilities</option>
                   </>
                 ) : (
