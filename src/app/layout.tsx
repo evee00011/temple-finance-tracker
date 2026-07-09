@@ -17,8 +17,8 @@ export default function RootLayout({
           <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur">
             <div className="mx-auto max-w-6xl px-4 py-4">
               <a href="#" className="text-xl font-bold tracking-tight">
-                <span className="text-sky-400">Expense</span> Tracker
-                <span className="text-slate-400">Lite</span>
+                <span className="text-amber-500">Expense and Collection</span> Tracker
+                <span className="text-slate-400"></span>
               </a>
             </div>
           </header>
