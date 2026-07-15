@@ -18,8 +18,18 @@ interface UnifiedRecord {
 }
 
 export default function Dashboard() {
+  // Hydration Mount Guard
+  const [mounted, setMounted] = useState(false);
+
+  // Auth Session States
+  const [session, setSession] = useState<any>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Core Data States
   const [records, setRecords] = useState<UnifiedRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Core Form Input States
   const [trxType, setTrxType] = useState<'collection' | 'expense'>('expense');
@@ -41,8 +51,50 @@ export default function Dashboard() {
 
   const [flash, setFlash] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
+  // 1. Structural Hydration Fix + Auth Monitor
   useEffect(() => {
-    fetchData();
+    setMounted(true);
+    let isMounted = true;
+
+    async function checkInitialSession() {
+      try {
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        if (isMounted) {
+          setSession(initialSession);
+          if (initialSession) {
+            await fetchData();
+          }
+        }
+      } catch (err: any) {
+        console.error("Auth initialization failed:", err);
+      } finally {
+        if (isMounted) {
+          setAuthLoading(false);
+        }
+      }
+    }
+
+    checkInitialSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+      if (isMounted) {
+        setSession(currentSession);
+        if (currentSession) {
+          await fetchData();
+          setAuthLoading(false);
+        } else {
+          setRecords([]);
+          setAuthLoading(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const triggerFlash = (msg: string, type: 'success' | 'error') => {
@@ -50,22 +102,38 @@ export default function Dashboard() {
     setTimeout(() => setFlash(null), 4000);
   };
 
+  // 2. Handle Authentication Actions
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      triggerFlash(error.message, 'error');
+      setAuthLoading(false);
+    } else {
+      setSession(data.session);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+  };
+
   async function fetchData() {
     setLoading(true);
     
-    // Parallel fetch from both independent tables
     const [collectionsRes, expensesRes] = await Promise.all([
       supabase.from('collection').select('*'),
       supabase.from('expense').select('*')
     ]);
 
     if (collectionsRes.error || expensesRes.error) {
-      triggerFlash('Failed to sync tables from Supabase', 'error');
+      triggerFlash('Access Denied: Unregistered email or unauthorized token permissions.', 'error');
       setLoading(false);
       return;
     }
 
-    // Map custom layout fields into a single uniform client-side list
     const mappedCollections: UnifiedRecord[] = (collectionsRes.data || []).map((c) => ({
       id: c.id,
       date: c.collection_date,
@@ -89,7 +157,6 @@ export default function Dashboard() {
       statusOrApprovedBy: e.expense_approved_by
     }));
 
-    // Combine and sort chronologically descending
     const combined = [...mappedCollections, ...mappedExpenses].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
@@ -143,7 +210,6 @@ export default function Dashboard() {
 
     triggerFlash(`${trxType === 'collection' ? 'Collection line' : 'Expense line'} added successfully!`, 'success');
     
-    // Clear inputs
     setDescription('');
     setAmount('');
     setCollectionRemarks('');
@@ -165,7 +231,6 @@ export default function Dashboard() {
     }
   };
 
-  // Live client filtering
   const filteredRecords = records.filter((r) => {
     if (startDate && r.date < startDate) return false;
     if (endDate && r.date > endDate) return false;
@@ -206,6 +271,62 @@ export default function Dashboard() {
     link.click();
   };
 
+  // 3. Render State Guards (Bypasses Hydration Loop)
+  if (!mounted || authLoading) {
+    return (
+      <div className="h-64 flex flex-col items-center justify-center text-slate-400 gap-2">
+        <div className="w-6 h-6 border-2 border-t-transparent border-amber-500 rounded-full animate-spin"></div>
+        <p className="text-sm font-medium animate-pulse">Checking credentials...</p>
+      </div>
+    );
+  }
+
+  // Gatekeeper Login Screen
+  if (!session) {
+    return (
+      <div className="max-w-md mx-auto mt-12 p-6 rounded-2xl border border-slate-800 bg-slate-900 shadow-xl">
+        <h2 className="text-2xl font-bold mb-1 tracking-tight text-center">Treasurer Login</h2>
+        <p className="text-xs text-slate-400 text-center mb-6"></p>
+        
+        {flash && (
+          <div className="mb-4 rounded-xl px-4 py-2.5 text-xs bg-rose-500/10 text-rose-300 border border-rose-400/20">
+            {flash.msg}
+          </div>
+        )}
+        
+        <form onSubmit={handleLogin} className="space-y-4">
+          <label className="block text-sm">
+            <span className="block mb-1 text-slate-300 font-medium">Email Address</span>
+            <input 
+              type="email" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500" 
+              required 
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="block mb-1 text-slate-300 font-medium">Password</span>
+            <input 
+              type="password" 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 focus:outline-none focus:border-amber-500" 
+              required 
+            />
+          </label>
+          <button 
+            type="submit" 
+            className="w-full rounded-xl bg-amber-500 hover:bg-amber-600 py-2.5 text-sm font-semibold tracking-wide shadow-md transition-colors text-slate-950"
+          >
+            Login
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // Live Core Dashboard
   return (
     <div className="space-y-6">
       {flash && (
@@ -214,9 +335,19 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="mb-4">
-        <h1 className="text-3xl font-semibold mb-2">Temple Dual-Ledger</h1>
-        <p className="text-slate-400">Cross-table verification tracking for multi-channel collections and outgoing expenses.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h1 className="text-3xl font-semibold">Temple Dual-Ledger</h1>
+          <p className="text-xs text-slate-400">
+            Secure session active for: <span className="text-amber-500 font-medium">{session.user.email}</span>
+          </p>
+        </div>
+        <button 
+          onClick={handleLogout} 
+          className="self-start text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-all font-medium"
+        >
+          Secure Sign Out
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -248,7 +379,7 @@ export default function Dashboard() {
             <div className="text-sm text-slate-300 flex items-center gap-2">
               <span>Filtered Net Flow:</span>
               <span className={`inline-block rounded-xl border px-3 py-1 font-semibold ${currentFilteredTotal >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
-                {currentFilteredTotal >= 0 ? `$${currentFilteredTotal.toFixed(2)}` : `-$${Math.abs(currentFilteredTotal).toFixed(2)}`}
+                {currentFilteredTotal >= 0 ? `RM ${currentFilteredTotal.toFixed(2)}` : `-RM ${Math.abs(currentFilteredTotal).toFixed(2)}`}
               </span>
             </div>
             <button onClick={handleExportCSV} className="text-xs text-sky-400 hover:text-sky-300 underline font-medium">
@@ -336,7 +467,7 @@ export default function Dashboard() {
       <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/40 flex items-center gap-4">
         <span className="text-sm text-slate-400">Total Book Value Balance:</span>
         <span className={`text-xl font-bold ${globalTotal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-          {globalTotal >= 0 ? `$${globalTotal.toFixed(2)}` : `-$${Math.abs(globalTotal).toFixed(2)}`}
+          {globalTotal >= 0 ? `RM ${globalTotal.toFixed(2)}` : `-RM ${Math.abs(globalTotal).toFixed(2)}`}
         </span>
       </div>
 
@@ -385,7 +516,7 @@ export default function Dashboard() {
                       {r.type === 'collection' ? r.category : `Auth: ${r.statusOrApprovedBy}`}
                     </td>
                     <td className={`px-4 py-3 text-right font-semibold ${r.type === 'collection' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {r.type === 'collection' ? `+$${r.amount.toFixed(2)}` : `-$${r.amount.toFixed(2)}`}
+                      {r.type === 'collection' ? `+RM ${r.amount.toFixed(2)}` : `-RM ${r.amount.toFixed(2)}`}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => handleDelete(r)} className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 text-xs border border-rose-500/20 px-2.5 py-1 rounded-lg transition-all">
