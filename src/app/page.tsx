@@ -231,6 +231,100 @@ export default function Dashboard() {
     }
   };
 
+  // Alternative Approach: Native Print Engine (Guarantees zero crashes/errors)
+  const handlePrintReceipt = (r: UnifiedRecord) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      triggerFlash('Popup blocked! Please allow popups to download receipts.', 'error');
+      return;
+    }
+
+    const typeLabel = r.type === 'collection' ? 'COLLECTION RECEIPT' : 'EXPENSE VOUCHER';
+    const accentColor = r.type === 'collection' ? '#10b981' : '#ef4444';
+    const dynamicLabel = r.type === 'collection' ? 'Category / Allocation' : 'Approved Auth';
+    const dynamicValue = r.type === 'collection' ? r.category : r.statusOrApprovedBy;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt_${r.id}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; padding: 30px; margin: 0; }
+            .container { max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; padding: 30px; border-radius: 12px; }
+            .header { border-b: 2px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 25px; }
+            .title { font-size: 22px; font-weight: bold; tracking: -0.5px; margin: 0; }
+            .subtitle { font-size: 12px; color: #64748b; margin: 5px 0 0 0; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+            .meta-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 15px; margin-bottom: 30px; font-size: 14px; }
+            .meta-item span { display: block; color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: bold; margin-bottom: 3px; }
+            .meta-item p { margin: 0; font-weight: 500; color: #0f172a; }
+            .table-box { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 14px; }
+            .table-box th { background-color: ${accentColor}; color: white; text-align: left; padding: 10px; font-weight: 600; }
+            .table-box td { border-bottom: 1px solid #f1f5f9; padding: 12px 10px; vertical-align: top; }
+            .total-card { background-color: #f8fafc; border: 1px solid #f1f5f9; padding: 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+            .total-label { font-size: 14px; font-weight: bold; color: #475569; }
+            .total-val { font-size: 18px; font-weight: bold; color: ${accentColor}; }
+            .sig-section { display: grid; grid-template-cols: 1fr 1fr; gap: 50px; margin-top: 60px; text-align: center; font-size: 12px; color: #64748b; }
+            .sig-line { border-top: 1px solid #cbd5e1; padding-top: 8px; font-weight: 500; }
+            @media print { body { padding: 0; } .container { border: none; padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 class="title">TEMPLE FINANCE COMMITTEE</h1>
+              <div class="subtitle" style="color: ${accentColor};">${typeLabel}</div>
+            </div>
+            
+            <div class="meta-grid">
+              <div class="meta-item"><span>Voucher ID</span><p>#${r.id}</p></div>
+              <div class="meta-item"><span>Transaction Date</span><p>${r.date}</p></div>
+              <div class="meta-item"><span>Payment Mode</span><p>${r.paymentMode}</p></div>
+              <div class="meta-item"><span>${dynamicLabel}</span><p>${dynamicValue}</p></div>
+            </div>
+
+            <table class="table-box">
+              <thead>
+                <tr>
+                  <th style="width: 70%;">Description Details</th>
+                  <th style="width: 30%; text-align: right;">Flow Direction</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <strong>${r.description}</strong>
+                    ${r.remarks ? `<br/><span style="font-size: 12px; color: #64748b; font-style: italic;">Remarks: ${r.remarks}</span>` : ''}
+                  </td>
+                  <td style="text-align: right; font-weight: 600; text-transform: uppercase; color: ${accentColor};">
+                    ${r.type}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="total-card">
+              <div class="total-label">Total Documented Value:</div>
+              <div class="total-val">RM ${r.amount.toFixed(2)}</div>
+            </div>
+
+            <div class="sig-section">
+              <div class="sig-line">Prepared By Treasurer</div>
+              <div class="sig-line">Authorized Signatory</div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+  };
+
   const filteredRecords = records.filter((r) => {
     if (startDate && r.date < startDate) return false;
     if (endDate && r.date > endDate) return false;
@@ -486,7 +580,7 @@ export default function Dashboard() {
                 <th className="text-left px-4 py-3">Mode</th>
                 <th className="text-left px-4 py-3">Category / Auth</th>
                 <th className="text-right px-4 py-3">Amount</th>
-                <th className="px-4 py-3"></th>
+                <th className="text-right px-4 py-3 w-44">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
@@ -519,9 +613,20 @@ export default function Dashboard() {
                       {r.type === 'collection' ? `+RM ${r.amount.toFixed(2)}` : `-RM ${r.amount.toFixed(2)}`}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => handleDelete(r)} className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 text-xs border border-rose-500/20 px-2.5 py-1 rounded-lg transition-all">
-                        Delete
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handlePrintReceipt(r)} 
+                          className="text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 text-xs border border-sky-500/20 px-2.5 py-1 rounded-lg transition-all"
+                        >
+                          Receipt
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(r)} 
+                          className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 text-xs border border-rose-500/20 px-2.5 py-1 rounded-lg transition-all"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
