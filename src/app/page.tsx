@@ -303,14 +303,10 @@ export default function Dashboard() {
             </table>
 
             <div class="total-card">
-              <div class="total-label">Total Documented Value:</div>
+              <div class="total-label">Total:</div>
               <div class="total-val">RM ${r.amount.toFixed(2)}</div>
             </div>
 
-            <div class="sig-section">
-              <div class="sig-line">Prepared By Treasurer</div>
-              <div class="sig-line">Authorized Signatory</div>
-            </div>
           </div>
           <script>
             window.onload = function() {
